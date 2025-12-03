@@ -27,6 +27,18 @@ def put():
 def delete():
     return {"status":200, "response":"Hola, delete!"}
 ```
+#### Para aceptar query params en tus endpoints, simplemente agregale parametros a la funcion:
+```
+@app.add_endpoint("/hola")
+def get(query_param):
+    return {"status":200, "response":"Hola, {query_param}!"}
+```
+#### Para hacer opcional un parametro, simplemente agrega un default:
+```
+@app.add_endpoint("/hola")
+def get(optional_query_param=""):
+    return {"status":200, "response":"Hola, {optional_query_param}!"}
+```
 
 
 ##### $uvicorn myapp:app --reload
