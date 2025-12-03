@@ -31,13 +31,19 @@ def delete():
 ```
 @app.add_endpoint("/hola")
 def get(query_param):
-    return {"status":200, "response":"Hola, {query_param}!"}
+    return {"status":200, "response":f"Hola, {query_param}!"}
 ```
 #### Para hacer opcional un parametro, simplemente agrega un default:
 ```
 @app.add_endpoint("/hola")
 def get(optional_query_param=""):
-    return {"status":200, "response":"Hola, {optional_query_param}!"}
+    return {"status":200, "response":f"Hola, {optional_query_param}!"}
+```
+#### Para combinar opcionales y obligatorios, simplemente agregar primero los obligatorios y luegos los opcionales con default:
+```
+@app.add_endpoint("/hola")
+def get(required_param, optional_query_param=""):
+    return {"status":200, "response":f"Hola, {required_param} {optional_query_param}!"}
 ```
 
 
@@ -45,7 +51,7 @@ def get(optional_query_param=""):
 
 #### Roadmap:
 
-#### * Query params
-#### * Rate limiter
-#### * Api key based auth
-#### * SQL support
+#### * Query params ✅
+#### * Rate limiter ⬛
+#### * Api key based auth ⬛
+#### * SQL support ⬛

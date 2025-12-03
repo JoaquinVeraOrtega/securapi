@@ -16,11 +16,10 @@ class Endpoint:
         self.required_params = []
         if argspecs.args:
             self.map_params(argspecs)
-        print(self.required_params)
     
     def map_params(self, argspecs):
         number_of_params = len(argspecs.args)
-        required_params = number_of_params - len(argspecs.defaults)
+        required_params = number_of_params - (len(argspecs.defaults) if argspecs.defaults else 0)
         index = 0
         if required_params > 0:
             req_left = required_params
@@ -44,6 +43,8 @@ class Endpoint:
         try:
             requireds_recieved = len(self.required_params)
             while index < len(separated):
+                if separated[index] not in new_params:
+                    raise KeyError(f"{separated[index]} is not a valid parameter")
                 new_params[separated[index]] = separated[index + 1]
                 if separated[index] in self.required_params:
                     requireds_recieved -= 1

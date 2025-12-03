@@ -130,7 +130,6 @@ class SecurAPI:
             return
         except TypeError as e:
             print(e)
-            print(e)
         except KeyError as e:
             print(f"Key error: the response dict MUST contain a {e} field")
         await send(
