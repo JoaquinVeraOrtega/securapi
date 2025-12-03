@@ -5,7 +5,7 @@
 
 #### Usage:
 
-#### myapp.py:
+##### myapp.py:
 ```
 from securapi.main import SecurAPI
 
@@ -30,3 +30,10 @@ def delete():
 
 
 ##### $uvicorn myapp:app --reload
+
+#### Roadmap:
+
+#### * Query params
+#### * Rate limiter
+#### * Api key based auth
+#### * SQL support

@@ -1,4 +1,6 @@
+import inspect
 from typing import Callable
+from .endpoints import Endpoint
 
 
 class SecurAPI:
@@ -13,10 +15,12 @@ class SecurAPI:
     allowed_methods = ("GET", "POST", "PUT", "DELETE")
 
     def __init__(self) -> None:
-        print("Welcome to SecurAPI")
-        print("Faster than FastAPI!")
-        print("...")
-        print("Ok, not really...")
+        print("+----------------------+")
+        print("| Welcome to SecurAPI  |")
+        print("| Faster than FastAPI! |")
+        print("| .....                |")
+        print("| Ok, not really...    |")
+        print("+----------------------+")
 
     def __call__(self, scope):
         """ASGI interface - returns a coroutine that takes (receive, send)"""
@@ -40,9 +44,10 @@ class SecurAPI:
                 )
             method = scope["method"]
             path = scope["path"]
+            q_params = scope["query_string"].decode()
 
             if method not in self.allowed_methods:
-                await self.method_not_allowed(method, send)
+                await self.bad_request(f"ERROR: only {self.allowed_methods} requests accepted", send)
                 return
             if not self.is_valid_route(path, method):
                 await send(
@@ -65,7 +70,7 @@ class SecurAPI:
                     }
                 )
             else:
-                await self.router(method, path, send)
+                await self.router(method, path, q_params, send)
 
         except ValueError as e:
             print(e)
@@ -86,10 +91,22 @@ class SecurAPI:
                 }
             )
 
-    async def router(self, method, path, send):
+    async def router(self, method, path, q_params, send):
         try:
-            response = self.routes[method][path]()
+            endpoint: Endpoint = self.routes[method][path]
+            
+            if endpoint.params:
+                response_params = endpoint.update_params(q_params)
+                if response_params:
+                    response = endpoint.handler(**response_params)
+                else:
+                    await self.bad_request("Error with query parameters, double check them!", send)
+                    return
+            else:
+                response = endpoint.handler()
+
             status_code = response["status"]
+
             if not isinstance(status_code, int):
                 raise TypeError("Status code MUST be an integer")
             body = response["response"]
@@ -113,6 +130,7 @@ class SecurAPI:
             return
         except TypeError as e:
             print(e)
+            print(e)
         except KeyError as e:
             print(f"Key error: the response dict MUST contain a {e} field")
         await send(
@@ -132,30 +150,37 @@ class SecurAPI:
             }
         )
 
-    async def method_not_allowed(self, method, send):
+    async def bad_request(self, messaje: str, send):
         await send(
             {
                 "type": "http.response.start",
                 "status": 400,  # BAD request
                 "headers": [
                     (b"content-type", b"text/plain"),
-                    (b"content-length", b"49"),
+                    (b"content-length", str(len(messaje)).encode()),
                 ],
             }
         )
         await send(
             {
                 "type": "http.response.body",
-                "body": b"ERROR: only get/post/put/delete requests accepted",
+                "body": messaje.encode(),
             }
         )
 
     # Endpoints decorators:
     def add_endpoint(self, path: str, method: str = "GET"):
-        """Add endpoint (default: GET). The return must be a dict with this fields: {"status": httpstatusCode, "response": responseBody(optional)}"""
+        """Add endpoint (default: GET).\n
+        The return must be a dict with this fields: {"status": httpstatusCode, "response": responseBody}\n
+        To accept query params, add parameters to the function.\n
+        To make the query params optional, add a default to the parameter"""
 
         def decorator(handler: Callable):
-            self.routes[method][path] = handler
-            return handler
+            formated_path = path
+            argspec = inspect.getfullargspec(handler)
+            if not path.endswith("/") and argspec.args:
+                formated_path = path + "/"
+            endpoint = Endpoint(handler, argspec, method, path)
+            self.routes[method][formated_path] = endpoint
 
         return decorator
