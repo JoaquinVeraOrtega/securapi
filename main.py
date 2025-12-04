@@ -1,26 +1,21 @@
 import inspect
 from typing import Callable
 from .endpoints import Endpoint
-
+import json
 
 class SecurAPI:
 
-    routes = {
-        "GET": {},
-        "POST": {},
-        "PUT": {},
-        "DELETE": {},
-    }
 
-    allowed_methods = ("GET", "POST", "PUT", "DELETE")
 
     def __init__(self) -> None:
-        print("+----------------------+")
-        print("| Welcome to SecurAPI  |")
-        print("| Faster than FastAPI! |")
-        print("| .....                |")
-        print("| Ok, not really...    |")
-        print("+----------------------+")
+            self.routes = {m: {} for m in ("GET", "POST", "PUT", "DELETE")}
+            self.allowed_methods = ("GET", "POST", "PUT", "DELETE")
+            print("+----------------------+")
+            print("| Welcome to SecurAPI  |")
+            print("| Faster than FastAPI! |")
+            print("| .....                |")
+            print("| Ok, not really...    |")
+            print("+----------------------+")
 
     def __call__(self, scope):
         """ASGI interface - returns a coroutine that takes (receive, send)"""
@@ -47,7 +42,7 @@ class SecurAPI:
             q_params = scope["query_string"].decode()
 
             if method not in self.allowed_methods:
-                await self.bad_request(f"ERROR: only {self.allowed_methods} requests accepted", send)
+                await self.bad_request({"status": 405,"error": f"only {self.allowed_methods} requests accepted"}, send)
                 return
             if not self.is_valid_route(path, method):
                 await send(
@@ -55,7 +50,7 @@ class SecurAPI:
                         "type": "http.response.start",
                         "status": 404,  # Not found
                         "headers": [
-                            (b"content-type", b"text/plain"),
+                            (b"content-type", b"application/json"),
                             (
                                 b"content-length",
                                 str(len(path) + len("Path:  not found")).encode(),
@@ -79,7 +74,7 @@ class SecurAPI:
                     "type": "http.response.start",
                     "status": 400,  # BAD request
                     "headers": [
-                        (b"content-type", b"text/plain"),
+                        (b"content-type", b"application/json"),
                         (b"content-length", b"34"),
                     ],
                 }
@@ -97,26 +92,32 @@ class SecurAPI:
             
             if endpoint.params:
                 response_params = endpoint.update_params(q_params)
-                if response_params:
-                    response = endpoint.handler(**response_params)
+                if isinstance(response_params, dict):
+                    if inspect.iscoroutinefunction(endpoint.handler):
+                        response = await endpoint.handler(**response_params)
+                    else:
+                        response = endpoint.handler(**response_params)
                 else:
-                    await self.bad_request("Error with query parameters, double check them!", send)
+                    await self.bad_request({"status": 400, "error": response_params}, send)
                     return
             else:
-                response = endpoint.handler()
+                if inspect.iscoroutinefunction(endpoint.handler):
+                    response = await endpoint.handler()
+                else:
+                    response = endpoint.handler()
 
             status_code = response["status"]
+            response_body = json.dumps(response)
 
             if not isinstance(status_code, int):
                 raise TypeError("Status code MUST be an integer")
-            body = response["response"]
-            content_length = str(len(body))
+            content_length = str(len(response_body))
             await send(
                 {
                     "type": "http.response.start",
                     "status": status_code,
                     "headers": [
-                        (b"content-type", b"text/plain"),
+                        (b"content-type", b"application/json"),
                         (b"content-length", content_length.encode()),
                     ],
                 }
@@ -124,7 +125,7 @@ class SecurAPI:
             await send(
                 {
                     "type": "http.response.body",
-                    "body": body.encode(),
+                    "body": response_body.encode(),
                 }
             )
             return
@@ -137,7 +138,7 @@ class SecurAPI:
                 "type": "http.response.start",
                 "status": 500,
                 "headers": [
-                    (b"content-type", b"text/plain"),
+                    (b"content-type", b"application/json"),
                     (b"content-length", b"5"),
                 ],
             }
@@ -149,21 +150,22 @@ class SecurAPI:
             }
         )
 
-    async def bad_request(self, messaje: str, send):
+    async def bad_request(self, messaje: dict, send):
+        response_body = json.dumps(messaje)
         await send(
             {
                 "type": "http.response.start",
-                "status": 400,  # BAD request
+                "status": messaje["status"],  # BAD request
                 "headers": [
-                    (b"content-type", b"text/plain"),
-                    (b"content-length", str(len(messaje)).encode()),
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(response_body)).encode()),
                 ],
             }
         )
         await send(
             {
                 "type": "http.response.body",
-                "body": messaje.encode(),
+                "body": response_body.encode(),
             }
         )
 
@@ -177,9 +179,9 @@ class SecurAPI:
         def decorator(handler: Callable):
             formated_path = path
             argspec = inspect.getfullargspec(handler)
-            if not path.endswith("/") and argspec.args:
+            if not path.endswith("/"):
                 formated_path = path + "/"
-            endpoint = Endpoint(handler, argspec, method, path)
+            endpoint = Endpoint(handler, argspec, method, formated_path)
             self.routes[method][formated_path] = endpoint
 
         return decorator

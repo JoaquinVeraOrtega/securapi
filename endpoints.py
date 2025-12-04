@@ -35,7 +35,7 @@ class Endpoint:
     def update_params(self, q_params: str):
         if not q_params:
             if self.required_params:
-                return False
+                return "Missing required parameters"
             return self.params
         separated = re.split(r"=|&",q_params)
         index = 0
@@ -51,7 +51,7 @@ class Endpoint:
                 index += 2
         except Exception as e:
             print(f"Error: {e}")
-            return False
+            return "Error with query parameters"
         if requireds_recieved > 0:
-            return False
+            return "Missing required parameters"
         return new_params
