@@ -7,13 +7,16 @@ class Endpoint:
     path: str
     params: Dict
     required_params: List
+    request_body: bool = False
+    body_required: bool
 
-    def __init__(self, handler: Callable, argspecs, method: str = "GET", path: str = "/") -> None:
+    def __init__(self, handler: Callable, argspecs, method, body_required, path: str = "/") -> None:
         self.handler = handler
         self.method = method
         self.path = path
         self.params = {}
         self.required_params = []
+        self.body_required = body_required
         if argspecs.args:
             self.map_params(argspecs)
     
@@ -24,12 +27,19 @@ class Endpoint:
         if required_params > 0:
             req_left = required_params
             while req_left != 0:
-                self.params[argspecs.args[index]] = ""
-                self.required_params.append(argspecs.args[index])
+                if argspecs.args[index] == "request_body":
+                    self.request_body = True
+
+                else:
+                    self.params[argspecs.args[index]] = ""
+                    self.required_params.append(argspecs.args[index])
                 index += 1
                 req_left -= 1
         while index != number_of_params:
-            self.params[argspecs.args[index]] = argspecs.defaults[index - required_params]
+            if argspecs.args[index] == "request_body":
+                self.request_body = True
+            else:
+                self.params[argspecs.args[index]] = argspecs.defaults[index - required_params]
             index += 1
         
     def update_params(self, q_params: str):
@@ -51,7 +61,7 @@ class Endpoint:
                 index += 2
         except Exception as e:
             print(f"Error: {e}")
-            return "Error with query parameters"
+            return str(e)
         if requireds_recieved > 0:
             return "Missing required parameters"
         return new_params

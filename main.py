@@ -29,8 +29,6 @@ class SecurAPI:
         if path not in self.routes[method]:
             return False
         return True
-    
-
 
     async def request_manager(self, scope, receive, send):
         try:
@@ -44,7 +42,7 @@ class SecurAPI:
             q_params = scope["query_string"].decode()
 
             if method not in self.allowed_methods:
-                await self.bad_request({"status": 405,"error": f"only {self.allowed_methods} requests accepted"}, send)
+                await self.bad_request(405,{"error": f"only {self.allowed_methods} requests accepted"}, send)
                 return
             if not self.is_valid_route(path, method):
                 await send(
@@ -67,7 +65,7 @@ class SecurAPI:
                     }
                 )
             else:
-                await self.router(method, path, q_params, send)
+                await self.router(method, path, q_params, receive, send)
 
         except ValueError as e:
             print(e)
@@ -88,21 +86,35 @@ class SecurAPI:
                 }
             )
 
-    async def router(self, method, path, q_params, send):
+
+    async def router(self, method, path, q_params, receive, send):
         default_status = {"GET": 200, "POST": 201, "PUT": 200, "DELETE": 204}
+
         try:
             endpoint: Endpoint = self.routes[method][path]
-            
-            if endpoint.params:
-                response_params = endpoint.update_params(q_params)
-                if isinstance(response_params, dict):
-                    if inspect.iscoroutinefunction(endpoint.handler):
-                        response = await endpoint.handler(**response_params)
+            args = {}
+            if endpoint.request_body or endpoint.params:
+                if endpoint.params:
+                    response_params = endpoint.update_params(q_params)
+                    if isinstance(response_params, dict):
+                        args = response_params
                     else:
-                        response = endpoint.handler(**response_params)
+                        await self.bad_request(400, {"error": response_params}, send)
+                        return
+                if endpoint.request_body:
+                    request_body = (await read_body(receive)).decode()
+                    print(f"Request body: {request_body}")
+                    print(endpoint.body_required)
+                    if not request_body and endpoint.body_required:
+                        await self.bad_request(400, {"error": "Missing required request body"}, send)
+                        return                            
+                    elif request_body:
+                        args["request_body"] = request_body
+                 
+                if inspect.iscoroutinefunction(endpoint.handler):
+                    response = await endpoint.handler(**args)
                 else:
-                    await self.bad_request({"status": 400, "error": response_params}, send)
-                    return
+                    response = endpoint.handler(**args)                    
             else:
                 if inspect.iscoroutinefunction(endpoint.handler):
                     response = await endpoint.handler()
@@ -111,7 +123,7 @@ class SecurAPI:
             if isinstance(response, tuple):
                 status_code = response[0]
                 if not valid_status_code(status_code):
-                    raise ValueError("Invalid HTTP status code returned by endpoint")
+                    raise Exception("Invalid HTTP status code returned by endpoint")
                 response_body = json.dumps(response[1])
             else:
                 status_code = default_status[method]
@@ -137,12 +149,10 @@ class SecurAPI:
                 }
             )
             return
-        except TypeError or ValueError as e:
+        except (TypeError, KeyError, Exception) as e:
             print(e)
-        except KeyError as e:
-            print(f"Key error: the response dict MUST contain a {e} field")
-        finally:
             await self.internal_error(send)
+
 
     async def internal_error(self, send):
         await send(
@@ -162,12 +172,12 @@ class SecurAPI:
             }
         )
 
-    async def bad_request(self, messaje: dict, send):
-        response_body = json.dumps(messaje)
+    async def bad_request(self, status_code: int, message: dict, send):
+        response_body = json.dumps(message)
         await send(
             {
                 "type": "http.response.start",
-                "status": messaje["status"],  # BAD request
+                "status": status_code,  # BAD request
                 "headers": [
                     (b"content-type", b"application/json"),
                     (b"content-length", str(len(response_body)).encode()),
@@ -191,9 +201,15 @@ class SecurAPI:
         def decorator(handler: Callable):
             formated_path = path
             argspec = inspect.getfullargspec(handler)
+            body_required = False
+            if "request_body" in argspec.args:
+                sig = inspect.signature(handler)
+                params = sig.parameters
+                r_body = params["request_body"]
+                body_required = r_body.default == inspect.Parameter.empty
             if not path.endswith("/"):
                 formated_path = path + "/"
-            endpoint = Endpoint(handler, argspec, method, formated_path)
+            endpoint = Endpoint(handler, argspec, method, body_required, formated_path)
             self.routes[method][formated_path] = endpoint
 
         return decorator
@@ -206,3 +222,17 @@ def valid_status_code(status_code: int) -> bool:
         return True
     except ValueError:
         return False
+
+async def read_body(receive):
+    """
+    Read and return the entire body from an incoming ASGI message.
+    """
+    body = b''
+    more_body = True
+
+    while more_body:
+        message = await receive()
+        body += message.get('body', b'')
+        more_body = message.get('more_body', False)
+
+    return body

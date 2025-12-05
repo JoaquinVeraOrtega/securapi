@@ -25,7 +25,7 @@ class TestSecurAPIUnit:
     def test_add_endpoint(self):
         app = SecurAPI()
         @app.add_endpoint("/sample", "POST")
-        def sample_handler(param1, param2="default"):
+        def sample_handler(param1, request_body, param2="default"):
             return {"status": 200, "response": f"Param1: {param1}, Param2: {param2}"}
         assert app.is_valid_route("/sample/", "POST") is True
         endpoint = app.routes["POST"]["/sample/"]
@@ -36,7 +36,8 @@ class TestSecurAPIUnit:
         assert endpoint.params["param2"] == "default"
         assert "param1" in endpoint.required_params
         assert "param2" not in endpoint.required_params
-
+        assert endpoint.request_body is True
+        assert endpoint.body_required is True
 
 
 

@@ -62,10 +62,10 @@ def test_app():
     """Create a test app with endpoints"""
     app = SecurAPI()
 
-    @app.add_endpoint("/","GET")
+    @app.add_endpoint("/", "GET")
     def root():
         return {"response": "Welcome to SecurAPI"}
-    
+
     @app.add_endpoint("/health", "GET")
     def health():
         return {"response": "OK"}
@@ -84,16 +84,16 @@ def test_app():
 
     @app.add_endpoint("/custom-status", "GET")
     def custom_status():
-        return 201,{"response": "Accepted"}
-    
+        return 201, {"response": "Accepted"}
+
     @app.add_endpoint("/custom-status-invalid", "GET")
     def custom_status_invalid():
-        return 2037842,{"response": "Accepted"}
-    
+        return 2037842, {"response": "Accepted"}
+
     @app.add_endpoint("/delete/responsebody/", "DELETE")
     def delete_with_content():
         return 200, {"response": "Deleted"}
-    
+
     @app.add_endpoint("/params", "GET")
     def params_handler(required_param, optional_param="opt"):
         return {
@@ -103,6 +103,48 @@ def test_app():
     @app.add_endpoint("/echo", "POST")
     def echo(data):
         return {"response": data}
+
+    @app.add_endpoint("/body", "POST")
+    def request_body_post_handler(request_body):
+        return {"response": f"Request body received: {request_body}"}
+
+    @app.add_endpoint("/body", "PUT")
+    def request_body_put_handler(request_body):
+        return {"response": f"Request body received: {request_body}"}
+
+    @app.add_endpoint("/body/params", "POST")
+    def request_body_and_query_params_post_handler(
+        request_body, required_qparam, optional_qparam="optional"
+    ):
+        return {
+            "response": {
+                "Request body received": request_body,
+                "optional_qparam": optional_qparam,
+                "required_qparam": required_qparam,
+            }
+        }
+
+    @app.add_endpoint("/body/params", "PUT")
+    def request_body_and_query_params_put_handler(
+        request_body, required_qparam, optional_qparam="optional"
+    ):
+        return {
+            "response": {
+                "Request body received": request_body,
+                "optional_qparam": optional_qparam,
+                "required_qparam": required_qparam,
+            }
+        }
+
+    @app.add_endpoint("/body/params/optional-body", "POST")
+    def optional_request_body_handler(
+        request_body="default body",
+    ):
+        return {
+            "response": {
+                "Request body received": request_body,
+            }
+        }
 
     return app
 
@@ -228,3 +270,155 @@ class TestSecurAPIIntegration:
         assert response.status_code == 500
         data = response.json()
         assert data["response"] == "Server Error"
+
+    def test_request_body_post(self, running_server):
+        """Test POST endpoint with request body"""
+        response = httpx.post(
+            f"{running_server.base_url}/body/", content="Test body content"
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == "Request body received: Test body content"
+
+    def test_request_body_put(self, running_server):
+        """Test PUT endpoint with request body"""
+        response = httpx.put(
+            f"{running_server.base_url}/body/", content="Test body content"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Request body received: Test body content"
+
+    def test_request_body_post_and_rparams(self, running_server):
+        """Test POST endpoint with request body"""
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"required_qparam": "required"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "Test body content",
+            "optional_qparam": "optional",
+            "required_qparam": "required",
+        }
+
+    def test_request_body_put_and_rparams(self, running_server):
+        """Test PUT endpoint with request body"""
+        response = httpx.put(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"required_qparam": "required"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "Test body content",
+            "optional_qparam": "optional",
+            "required_qparam": "required",
+        }
+
+    def test_request_body_post_and_params(self, running_server):
+        """Test POST endpoint with request body"""
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"optional_qparam": "opt", "required_qparam": "required"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "Test body content",
+            "optional_qparam": "opt",
+            "required_qparam": "required",
+        }
+
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"optional_qparam": "opt"},
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data == {"error": "Missing required parameters"}
+
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={
+                "optional_qparam": "opt",
+                "required_qparam": "required",
+                "invalid_param": "oops",
+            },
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "is not a valid parameter" in data["error"]
+
+    def test_request_body_put_and_params(self, running_server):
+        """Test PUT endpoint with request body"""
+        response = httpx.put(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"optional_qparam": "opt", "required_qparam": "required"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "Test body content",
+            "optional_qparam": "opt",
+            "required_qparam": "required",
+        }
+
+        response = httpx.put(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={"optional_qparam": "opt"},
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data == {"error": "Missing required parameters"}
+   
+        response = httpx.put(
+            f"{running_server.base_url}/body/params/",
+            content="Test body content",
+            params={
+                "optional_qparam": "opt",
+                "required_qparam": "required",
+                "invalid_param": "oops",
+            },
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "is not a valid parameter" in data["error"]
+    
+    def test_optional_request_body_post(self, running_server):
+        """Test POST endpoint with optional request body"""
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/optional-body/",
+            content="Provided body content",
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "Provided body content",
+        }
+
+        response = httpx.post(
+            f"{running_server.base_url}/body/params/optional-body/",
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == {
+            "Request body received": "default body",
+         }
+        
+    def test_required_request_body_missing(self, running_server):
+        """Test POST endpoint with missing required request body"""
+        response = httpx.post(
+            f"{running_server.base_url}/body/",
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data == {"error": "Missing required request body"}
