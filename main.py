@@ -2,10 +2,10 @@ import inspect
 from typing import Callable
 from .endpoints import Endpoint
 import json
+from http import HTTPStatus
 
+    
 class SecurAPI:
-
-
 
     def __init__(self) -> None:
             self.routes = {m: {} for m in ("GET", "POST", "PUT", "DELETE")}
@@ -29,8 +29,10 @@ class SecurAPI:
         if path not in self.routes[method]:
             return False
         return True
+    
 
-    async def request_manager(self, scope, recieve, send):
+
+    async def request_manager(self, scope, receive, send):
         try:
             if scope["type"] not in ["http", "lifespan"]:
                 raise ValueError(
@@ -87,6 +89,7 @@ class SecurAPI:
             )
 
     async def router(self, method, path, q_params, send):
+        default_status = {"GET": 200, "POST": 201, "PUT": 200, "DELETE": 204}
         try:
             endpoint: Endpoint = self.routes[method][path]
             
@@ -105,9 +108,14 @@ class SecurAPI:
                     response = await endpoint.handler()
                 else:
                     response = endpoint.handler()
-
-            status_code = response["status"]
-            response_body = json.dumps(response)
+            if isinstance(response, tuple):
+                status_code = response[0]
+                if not valid_status_code(status_code):
+                    raise ValueError("Invalid HTTP status code returned by endpoint")
+                response_body = json.dumps(response[1])
+            else:
+                status_code = default_status[method]
+                response_body = json.dumps(response)
 
             if not isinstance(status_code, int):
                 raise TypeError("Status code MUST be an integer")
@@ -129,24 +137,28 @@ class SecurAPI:
                 }
             )
             return
-        except TypeError as e:
+        except TypeError or ValueError as e:
             print(e)
         except KeyError as e:
             print(f"Key error: the response dict MUST contain a {e} field")
+        finally:
+            await self.internal_error(send)
+
+    async def internal_error(self, send):
         await send(
             {
                 "type": "http.response.start",
                 "status": 500,
                 "headers": [
                     (b"content-type", b"application/json"),
-                    (b"content-length", b"5"),
+                    (b"content-length", b"27"),
                 ],
             }
         )
         await send(
             {
                 "type": "http.response.body",
-                "body": b"ERROR",
+                "body": b'{"response":"Server Error"}',
             }
         )
 
@@ -185,3 +197,12 @@ class SecurAPI:
             self.routes[method][formated_path] = endpoint
 
         return decorator
+
+def valid_status_code(status_code: int) -> bool:
+    """Validate if status code is a valid HTTP status code"""
+    try:
+        # This will raise ValueError for invalid codes
+        HTTPStatus(status_code)
+        return True
+    except ValueError:
+        return False

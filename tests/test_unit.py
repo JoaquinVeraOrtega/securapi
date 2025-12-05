@@ -1,8 +1,4 @@
 from ..main import SecurAPI
-import uvicorn
-import httpx
-from multiprocessing import Process
-import time
 
 class TestSecurAPIUnit:
     def test_securapi_initialization(self):

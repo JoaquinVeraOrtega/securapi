@@ -62,20 +62,47 @@ def test_app():
     """Create a test app with endpoints"""
     app = SecurAPI()
 
+    @app.add_endpoint("/","GET")
+    def root():
+        return {"response": "Welcome to SecurAPI"}
+    
     @app.add_endpoint("/health", "GET")
     def health():
-        return {"status": 200, "response": "OK"}
+        return {"response": "OK"}
 
+    @app.add_endpoint("/health", "PUT")
+    def put_health():
+        return {"response": "OK put"}
+
+    @app.add_endpoint("/health", "DELETE")
+    def delete_health():
+        return None
+
+    @app.add_endpoint("/health", "POST")
+    def post_health():
+        return {"response": "OK post"}
+
+    @app.add_endpoint("/custom-status", "GET")
+    def custom_status():
+        return 201,{"response": "Accepted"}
+    
+    @app.add_endpoint("/custom-status-invalid", "GET")
+    def custom_status_invalid():
+        return 2037842,{"response": "Accepted"}
+    
+    @app.add_endpoint("/delete/responsebody/", "DELETE")
+    def delete_with_content():
+        return 200, {"response": "Deleted"}
+    
     @app.add_endpoint("/params", "GET")
     def params_handler(required_param, optional_param="opt"):
         return {
-            "status": 200,
             "response": f"Required: {required_param}, Optional: {optional_param}",
         }
 
     @app.add_endpoint("/echo", "POST")
     def echo(data):
-        return {"status": 200, "response": data}
+        return {"response": data}
 
     return app
 
@@ -92,13 +119,40 @@ def running_server(test_app):
 class TestSecurAPIIntegration:
     """Integration tests with real HTTP server"""
 
+    def test_root_endpoint(self, running_server):
+        """Test root endpoint"""
+        response = httpx.get(f"{running_server.base_url}/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Welcome to SecurAPI"
+
     def test_health_endpoint(self, running_server):
         """Test basic endpoint"""
         response = httpx.get(f"{running_server.base_url}/health/")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == 200
         assert data["response"] == "OK"
+
+    def test_same_path_different_methods(self, running_server):
+        """Test same path with different HTTP methods"""
+        get_response = httpx.get(f"{running_server.base_url}/health/")
+        post_response = httpx.post(f"{running_server.base_url}/health/")
+        put_response = httpx.put(f"{running_server.base_url}/health/")
+        delete_response = httpx.delete(f"{running_server.base_url}/health/")
+
+        assert get_response.status_code == 200
+        assert post_response.status_code == 201
+        assert put_response.status_code == 200
+        assert delete_response.status_code == 204
+
+        assert get_response.json() != post_response.json() != put_response.json()
+        assert delete_response.content == b""
+
+    def test_delete_with_content(self, running_server):
+        """Test DELETE endpoint returns no content"""
+        response = httpx.delete(f"{running_server.base_url}/delete/responsebody/")
+        assert response.status_code == 200
+        assert response.json()["response"] == "Deleted"
 
     def test_missing_required_param(self, running_server):
         """Test missing required parameter"""
@@ -147,7 +201,7 @@ class TestSecurAPIIntegration:
         response = httpx.post(
             f"{running_server.base_url}/echo/", params={"data": "test"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.json()
         assert data["response"] == "test"
 
@@ -160,3 +214,17 @@ class TestSecurAPIIntegration:
         """Test 405 for wrong HTTP method"""
         response = httpx.options(f"{running_server.base_url}/health/")
         assert response.status_code == 405
+
+    def test_custom_status_code(self, running_server):
+        """Test endpoint returning custom status code"""
+        response = httpx.get(f"{running_server.base_url}/custom-status/")
+        assert response.status_code == 201
+        data = response.json()
+        assert data["response"] == "Accepted"
+
+    def test_custom_status_code_invalid(self, running_server):
+        """Test endpoint returning custom status code"""
+        response = httpx.get(f"{running_server.base_url}/custom-status-invalid/")
+        assert response.status_code == 500
+        data = response.json()
+        assert data["response"] == "Server Error"
