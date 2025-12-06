@@ -1,5 +1,5 @@
 from typing import Callable, Dict, List
-import re
+from urllib.parse import parse_qsl
 
 class Endpoint:
     handler: Callable
@@ -47,20 +47,20 @@ class Endpoint:
             if self.required_params:
                 return "Missing required parameters"
             return self.params
-        separated = re.split(r"=|&",q_params)
-        index = 0
-        new_params = self.params.copy()
+        
         try:
-            requireds_recieved = len(self.required_params)
-            while index < len(separated):
-                if separated[index] not in new_params:
-                    raise KeyError(f"{separated[index]} is not a valid parameter")
-                new_params[separated[index]] = separated[index + 1]
-                if separated[index] in self.required_params:
-                    requireds_recieved -= 1
-                index += 2
-        except Exception as e:
+            pairs = parse_qsl(q_params, keep_blank_values=True)
+            new_params = self.params.copy()
+            remaining_required = set(self.required_params)
+            
+            for key, value in pairs:
+                if key not in new_params:
+                    raise KeyError(f"{key} is not a valid parameter")
+                new_params[key] = value
+                remaining_required.discard(key)
+            
+            if remaining_required:
+                return "Missing required parameters"
+            return new_params
+        except (KeyError, ValueError) as e:
             return str(e)
-        if requireds_recieved > 0:
-            return "Missing required parameters"
-        return new_params

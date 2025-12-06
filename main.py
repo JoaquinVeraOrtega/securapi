@@ -40,7 +40,7 @@ class SecurAPI:
                     f"Expected HTTP scope, got {scope['type']}."
                     "Only HTTP requests are supported."
                 )
-            method = scope["method"]
+            method = scope["method"].upper()
             path = scope["path"]
             if not path.endswith("/"):
                 path += "/"
@@ -126,7 +126,7 @@ class SecurAPI:
             if isinstance(response, tuple):
                 status_code = response[0]
                 if not valid_status_code(status_code):
-                    raise Exception("Invalid HTTP status code returned by endpoint")
+                    raise TypeError("Invalid HTTP status code returned by endpoint")
                 response_body = json.dumps(response[1])
             else:
                 status_code = default_status[method]
@@ -152,12 +152,12 @@ class SecurAPI:
                 }
             )
             return
-        except (TypeError, KeyError, Exception) as e:
+        except (TypeError, KeyError) as e:
             logger.exception(e)
             await self.internal_error(send)
 
 
-    async def internal_error(self, send):
+    async def internal_error(self, send) -> None:
         await send(
             {
                 "type": "http.response.start",
@@ -195,13 +195,13 @@ class SecurAPI:
         )
 
     # Endpoints decorators:
-    def add_endpoint(self, path: str, method: str = "GET"):
+    def add_endpoint(self, path: str, method: str = "GET") ->  Callable:
         """Add endpoint (default: GET).\n
         The return must be a dict with this fields: {"status": httpstatusCode, "response": responseBody}\n
         To accept query params, add parameters to the function.\n
         To make the query params optional, add a default to the parameter"""
 
-        def decorator(handler: Callable):
+        def decorator(handler: Callable) -> Callable:
             formated_path = path
             argspec = inspect.getfullargspec(handler)
             body_required = False
