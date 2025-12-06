@@ -187,6 +187,16 @@ class TestSecurAPIIntegration:
         assert put_response.status_code == 200
         assert delete_response.status_code == 204
 
+        get_response = httpx.get(f"{running_server.base_url}/health")
+        post_response = httpx.post(f"{running_server.base_url}/health")
+        put_response = httpx.put(f"{running_server.base_url}/health")
+        delete_response = httpx.delete(f"{running_server.base_url}/health")
+
+        assert get_response.status_code == 200
+        assert post_response.status_code == 201
+        assert put_response.status_code == 200
+        assert delete_response.status_code == 204
+
         assert get_response.json() != post_response.json() != put_response.json()
         assert delete_response.content == b""
 

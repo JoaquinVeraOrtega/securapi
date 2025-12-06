@@ -39,6 +39,8 @@ class SecurAPI:
                 )
             method = scope["method"]
             path = scope["path"]
+            if not path.endswith("/"):
+                path += "/"
             q_params = scope["query_string"].decode()
 
             if method not in self.allowed_methods:
