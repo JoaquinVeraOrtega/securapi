@@ -3,19 +3,22 @@ from typing import Callable
 from .endpoints import Endpoint
 import json
 from http import HTTPStatus
+import logging
 
-    
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)    
+if not logger.handlers:
+    ch = logging.StreamHandler()
+    ch.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    ))
+    logger.addHandler(ch)
 class SecurAPI:
 
     def __init__(self) -> None:
             self.routes = {m: {} for m in ("GET", "POST", "PUT", "DELETE")}
             self.allowed_methods = ("GET", "POST", "PUT", "DELETE")
-            print("+----------------------+")
-            print("| Welcome to SecurAPI  |")
-            print("| Faster than FastAPI! |")
-            print("| .....                |")
-            print("| Ok, not really...    |")
-            print("+----------------------+")
+            logger.info("SecurAPI initialized")
 
     def __call__(self, scope):
         """ASGI interface - returns a coroutine that takes (receive, send)"""
@@ -70,7 +73,7 @@ class SecurAPI:
                 await self.router(method, path, q_params, receive, send)
 
         except ValueError as e:
-            print(e)
+            logger.exception(e)
             await send(
                 {
                     "type": "http.response.start",
@@ -105,8 +108,6 @@ class SecurAPI:
                         return
                 if endpoint.request_body:
                     request_body = (await read_body(receive)).decode()
-                    print(f"Request body: {request_body}")
-                    print(endpoint.body_required)
                     if not request_body and endpoint.body_required:
                         await self.bad_request(400, {"error": "Missing required request body"}, send)
                         return                            
@@ -152,7 +153,7 @@ class SecurAPI:
             )
             return
         except (TypeError, KeyError, Exception) as e:
-            print(e)
+            logger.exception(e)
             await self.internal_error(send)
 
 
@@ -213,7 +214,8 @@ class SecurAPI:
                 formated_path = path + "/"
             endpoint = Endpoint(handler, argspec, method, body_required, formated_path)
             self.routes[method][formated_path] = endpoint
-
+            return handler
+        
         return decorator
 
 def valid_status_code(status_code: int) -> bool:
@@ -225,7 +227,7 @@ def valid_status_code(status_code: int) -> bool:
     except ValueError:
         return False
 
-async def read_body(receive):
+async def read_body(receive) -> bytes:
     """
     Read and return the entire body from an incoming ASGI message.
     """

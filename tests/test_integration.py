@@ -64,7 +64,7 @@ def test_app():
 
     @app.add_endpoint("/", "GET")
     def root():
-        return {"response": "Welcome to SecurAPI"}
+        return {"response": "Welcome to SecurAPIñ"}
 
     @app.add_endpoint("/health", "GET")
     def health():
@@ -166,7 +166,7 @@ class TestSecurAPIIntegration:
         response = httpx.get(f"{running_server.base_url}/")
         assert response.status_code == 200
         data = response.json()
-        assert data["response"] == "Welcome to SecurAPI"
+        assert data["response"] == "Welcome to SecurAPIñ"
 
     def test_health_endpoint(self, running_server):
         """Test basic endpoint"""

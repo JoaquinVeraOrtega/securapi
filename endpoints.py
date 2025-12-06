@@ -60,7 +60,6 @@ class Endpoint:
                     requireds_recieved -= 1
                 index += 2
         except Exception as e:
-            print(f"Error: {e}")
             return str(e)
         if requireds_recieved > 0:
             return "Missing required parameters"
