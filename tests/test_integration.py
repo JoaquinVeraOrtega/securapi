@@ -64,7 +64,7 @@ def test_app():
 
     @app.add_endpoint("/", "GET")
     def root():
-        return {"response": "Welcome to SecurAPIñ"}
+        return {"response": "Welcome to SecurAPI"}
 
     @app.add_endpoint("/health", "GET")
     def health():
@@ -145,7 +145,22 @@ def test_app():
                 "Request body received": request_body,
             }
         }
+    @app.add_endpoint("/spanish", "GET")
+    def spanish_endpoint():
+        return {"response": "¡Hola! Niño español"}  # ñ = 2 bytes in UTF-8
 
+    @app.add_endpoint("/emoji", "GET")
+    def emoji_endpoint():
+        return {"response": "Hello 🎉 World"}  # 🎉 = 4 bytes in UTF-8
+
+    @app.add_endpoint("/chinese", "GET")
+    def chinese_endpoint():
+        return {"response": "你好世界"}  # Each char = 3 bytes in UTF-8
+
+    @app.add_endpoint("/price", "GET")
+    def price_endpoint():
+        return {"response": "Price: €99.99"}
+    
     return app
 
 
@@ -166,7 +181,7 @@ class TestSecurAPIIntegration:
         response = httpx.get(f"{running_server.base_url}/")
         assert response.status_code == 200
         data = response.json()
-        assert data["response"] == "Welcome to SecurAPIñ"
+        assert data["response"] == "Welcome to SecurAPI"
 
     def test_health_endpoint(self, running_server):
         """Test basic endpoint"""
@@ -432,3 +447,34 @@ class TestSecurAPIIntegration:
         assert response.status_code == 400
         data = response.json()
         assert data == {"error": "Missing required request body"}
+
+class TestSecurAPIIntegrationContentLengthEncoding:
+    """Integration tests for content with multi-byte UTF-8 characters"""
+
+    def test_spanish_endpoint(self, running_server):
+        """Test endpoint with Spanish characters"""
+        response = httpx.get(f"{running_server.base_url}/spanish/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "¡Hola! Niño español"
+
+    def test_emoji_endpoint(self, running_server):
+        """Test endpoint with emoji characters"""
+        response = httpx.get(f"{running_server.base_url}/emoji/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Hello 🎉 World"
+
+    def test_chinese_endpoint(self, running_server):
+        """Test endpoint with Chinese characters"""
+        response = httpx.get(f"{running_server.base_url}/chinese/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "你好世界"
+
+    def test_price_endpoint(self, running_server):
+        """Test endpoint with Euro symbol"""
+        response = httpx.get(f"{running_server.base_url}/price/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Price: €99.99"
