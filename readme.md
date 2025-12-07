@@ -1,9 +1,10 @@
 # SecurAPI!
 
 ## Desarrollando mi propio mini framework para crear rest APIs con python
-### Inspirado en FastAPI, claro
+#### El objetivo del proyecto es educativo: ganar entendimiento sobre como un framework funciona por detrás, aplicar buenas prácticas de seguridad, testing, etc 
 
-#### Usage:
+
+### Usage:
 
 ##### myapp.py:
 ```python
@@ -57,5 +58,24 @@ def get(request_body):
 def get(required_param, optional_query_param=""):
     return 200, {"response":f"Hola, {required_param} {optional_query_param}!"}
 ```
+#### Por defecto los metodos aceptados son GET, POST, PUT, DELETE
+#### Se puede personalizar pasando como parametro los metodos que quiero permitir al instanciar la app:
+```python
+from securapi.main import SecurAPI
+
+app = SecurAPI(allowed_methods={"GET","POST","PUT","PATCH","HEAD","OPTIONS"})
+
+#Este endopoint no va a funcionar porque DELETE no es un metodo permitido:
+@app.add_endpoint("/hola", "DELETE")
+def delete(required_param, optional_query_param=""):
+    return {"response":f"Hola, {required_param} {optional_query_param}!"}
+
+#Este endopoint esta correctamente definido:
+@app.add_endpoint("/hola", "OPTIONS")
+def options(required_param, optional_query_param=""):
+    return {"response":f"Hola, {required_param} {optional_query_param}!"}
+```
+
+
 ### Corre el server!
 ##### $uvicorn myapp:app --reload

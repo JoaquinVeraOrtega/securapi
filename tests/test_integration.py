@@ -173,7 +173,7 @@ def running_server(test_app):
     server.stop()
 
 
-class TestSecurAPIIntegration:
+class TestSecurAPIIntegrationMethods:
     """Integration tests with real HTTP server"""
 
     def test_root_endpoint(self, running_server):
@@ -220,6 +220,9 @@ class TestSecurAPIIntegration:
         response = httpx.delete(f"{running_server.base_url}/delete/responsebody/")
         assert response.status_code == 200
         assert response.json()["response"] == "Deleted"
+
+class TestSecurAPIIntegrationParams:
+    """Integration tests for query parameters"""
 
     def test_missing_required_param(self, running_server):
         """Test missing required parameter"""
@@ -277,10 +280,8 @@ class TestSecurAPIIntegration:
         response = httpx.get(f"{running_server.base_url}/nonexistent/")
         assert response.status_code == 404
 
-    def test_method_not_allowed(self, running_server):
-        """Test 405 for wrong HTTP method"""
-        response = httpx.options(f"{running_server.base_url}/health/")
-        assert response.status_code == 405
+class TestSecurAPIIntegrationStatusCodes:
+    """Integration tests for custom status codes"""
 
     def test_custom_status_code(self, running_server):
         """Test endpoint returning custom status code"""
@@ -295,6 +296,9 @@ class TestSecurAPIIntegration:
         assert response.status_code == 500
         data = response.json()
         assert data["response"] == "Server Error"
+
+class TestSecurAPIIntegrationRequestBody:
+    """Integration tests for request body handling"""
 
     def test_request_body_post(self, running_server):
         """Test POST endpoint with request body"""
@@ -448,6 +452,7 @@ class TestSecurAPIIntegration:
         data = response.json()
         assert data == {"error": "Missing required request body"}
 
+
 class TestSecurAPIIntegrationContentLengthEncoding:
     """Integration tests for content with multi-byte UTF-8 characters"""
 
@@ -478,3 +483,78 @@ class TestSecurAPIIntegrationContentLengthEncoding:
         assert response.status_code == 200
         data = response.json()
         assert data["response"] == "Price: €99.99"
+
+@pytest.fixture
+def test_app_with_extra_config():
+    """Create a test app with endpoints"""
+    allowed_methods = {"PATCH", "HEAD", "OPTIONS"}
+    app = SecurAPI(allowed_methods=allowed_methods)
+
+    @app.add_endpoint("/get", "GET")
+    def get():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/post", "POST")
+    def post():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/put", "PUT")
+    def put ():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/delete", "DELETE")
+    def delete():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/patch", "PATCH")
+    def patch():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/options", "OPTIONS")
+    def options():
+        return {"response": "Welcome to SecurAPI"}
+
+    @app.add_endpoint("/head", "HEAD")
+    def head():
+        return {"response": "Welcome to SecurAPI"}
+    
+    return app
+
+
+@pytest.fixture
+def running_server_extra_config(test_app_with_extra_config):
+    """Fixture that provides a running server"""
+    server = ServerManager(test_app_with_extra_config, 8000)
+    server.start()
+    yield server
+    server.stop()
+
+class TestSecurAPIIntegrationMethodsExtraConfig:
+    """Integration tests with real HTTP server"""
+
+    def test_method_not_allowed(self, running_server_extra_config):
+        """Test 405 for wrong HTTP method"""
+        response = httpx.get(f"{running_server_extra_config.base_url}/get")
+        assert response.status_code == 405
+        response = httpx.post(f"{running_server_extra_config.base_url}/post")
+        assert response.status_code == 405
+        response = httpx.put(f"{running_server_extra_config.base_url}/put")
+        assert response.status_code == 405
+        response = httpx.delete(f"{running_server_extra_config.base_url}/delete")
+        assert response.status_code == 405
+
+    def test_configured_methods_allowed(self, running_server_extra_config):
+        """Test root endpoint"""
+        response = httpx.options(f"{running_server_extra_config.base_url}/options")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Welcome to SecurAPI"
+
+        response = httpx.patch(f"{running_server_extra_config.base_url}/patch")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Welcome to SecurAPI"
+
+        response = httpx.head(f"{running_server_extra_config.base_url}/head")
+        assert response.status_code == 200
+        assert response.content == b""

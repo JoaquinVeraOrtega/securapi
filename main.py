@@ -5,20 +5,29 @@ import json
 from http import HTTPStatus
 import logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)    
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"
-    ))
-    logger.addHandler(ch)
+
+
 class SecurAPI:
 
-    def __init__(self) -> None:
-            self.routes = {m: {} for m in ("GET", "POST", "PUT", "DELETE")}
-            self.allowed_methods = ("GET", "POST", "PUT", "DELETE")
-            logger.info("SecurAPI initialized")
+    def __init__(self, allowed_methods = None) -> None:
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)    
+        if not self.logger.handlers:
+            ch = logging.StreamHandler()
+            ch.setFormatter(logging.Formatter(
+                "%(asctime)s %(levelname)s %(name)s: %(message)s"
+            ))
+            self.logger.addHandler(ch)
+        if allowed_methods is not None:
+            if all(valid_method(m) for m in allowed_methods):
+                self.allowed_methods = allowed_methods
+            else:
+                self.allowed_methods = {"GET", "POST", "PUT", "DELETE"}
+                self.logger.warning("One or more invalid HTTP methods provided. Using default methods: GET, POST, PUT, DELETE")
+        else:
+            self.allowed_methods = {"GET", "POST", "PUT", "DELETE"}
+        self.routes = {m: {} for m in self.allowed_methods}
+        self.logger.info("SecurAPI initialized")
 
     def __call__(self, scope):
         """ASGI interface - returns a coroutine that takes (receive, send)"""
@@ -73,7 +82,7 @@ class SecurAPI:
                 await self.router(method, path, q_params, receive, send)
 
         except ValueError as e:
-            logger.exception(e)
+            self.logger.exception(e)
             await send(
                 {
                     "type": "http.response.start",
@@ -93,7 +102,7 @@ class SecurAPI:
 
 
     async def router(self, method, path, q_params, receive, send):
-        default_status = {"GET": 200, "POST": 201, "PUT": 200, "DELETE": 204}
+        default_status = {"GET": 200, "POST": 201, "PUT": 200, "DELETE": 204, "PATCH": 200, "HEAD": 200, "OPTIONS": 200}
 
         try:
             endpoint: Endpoint = self.routes[method][path]
@@ -153,7 +162,7 @@ class SecurAPI:
             )
             return
         except (TypeError, KeyError) as e:
-            logger.exception(e)
+            self.logger.exception(e)
             await self.internal_error(send)
 
 
@@ -201,21 +210,27 @@ class SecurAPI:
         To accept query params, add parameters to the function.\n
         To make the query params optional, add a default to the parameter"""
 
-        def decorator(handler: Callable) -> Callable:
-            formated_path = path
-            argspec = inspect.getfullargspec(handler)
-            body_required = False
-            if "request_body" in argspec.args:
-                sig = inspect.signature(handler)
-                params = sig.parameters
-                r_body = params["request_body"]
-                body_required = r_body.default == inspect.Parameter.empty
-            if not path.endswith("/"):
-                formated_path = path + "/"
-            endpoint = Endpoint(handler, argspec, method, body_required, formated_path)
-            self.routes[method][formated_path] = endpoint
-            return handler
-        
+        def decorator(handler: Callable):
+            try:
+                if method not in self.allowed_methods:
+                    raise ValueError(f"Method {method} not allowed. Allowed methods: {self.allowed_methods}")
+                formated_path = path
+                argspec = inspect.getfullargspec(handler)
+                body_required = False
+                if "request_body" in argspec.args:
+                    sig = inspect.signature(handler)
+                    params = sig.parameters
+                    r_body = params["request_body"]
+                    body_required = r_body.default == inspect.Parameter.empty
+                if not path.endswith("/"):
+                    formated_path = path + "/"
+                endpoint = Endpoint(handler, argspec, method, body_required, formated_path)
+                self.routes[method][formated_path] = endpoint
+                return handler
+            except ValueError as e:
+                self.logger.info(f"Error adding endpoint {handler.__name__}: %s", e)
+                return handler  # Return the original handler to avoid breaking decorator usage
+
         return decorator
 
 def valid_status_code(status_code: int) -> bool:
@@ -226,6 +241,11 @@ def valid_status_code(status_code: int) -> bool:
         return True
     except ValueError:
         return False
+
+def valid_method(method: str) -> bool:
+    """Validate if method is a valid HTTP method"""
+    valid_methods = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+    return method.upper() in valid_methods
 
 async def read_body(receive) -> bytes:
     """

@@ -4,10 +4,32 @@ class TestSecurAPIUnit:
     def test_securapi_initialization(self):
         app = SecurAPI()
         assert isinstance(app, SecurAPI)
-        assert app.allowed_methods == ("GET", "POST", "PUT", "DELETE")
+        assert app.allowed_methods == {"GET", "POST", "PUT", "DELETE"}
         for method in app.allowed_methods:
             assert method in app.routes
             assert isinstance(app.routes[method], dict)
+
+    def test_securapi_init_with_config(self):
+        allowed_methods = {"PATCH", "HEAD", "OPTIONS"}
+        app = SecurAPI(allowed_methods=allowed_methods)
+        assert app.allowed_methods == {"PATCH", "HEAD", "OPTIONS"}
+        for method in app.allowed_methods:
+            assert method in app.routes
+            assert isinstance(app.routes[method], dict)
+        for method in ("GET", "POST", "PUT", "DELETE"):
+            assert method not in app.allowed_methods
+            assert method not in app.routes
+
+    def test_securapi_init_with_wrong_config(self):
+        allowed_methods = {"INVALID", "METHOD", "123"}
+        app = SecurAPI(allowed_methods=allowed_methods)
+        assert app.allowed_methods == {"GET", "POST", "PUT", "DELETE"}
+        for method in app.allowed_methods:
+            assert method in app.routes
+            assert isinstance(app.routes[method], dict)
+        for method in allowed_methods:
+            assert method not in app.allowed_methods
+            assert method not in app.routes
 
     def test_is_valid_route(self):
         app = SecurAPI()
