@@ -46,7 +46,7 @@ class ServerManager:
             try:
                 httpx.get(f"{self.base_url}/", timeout=0.5)
                 return
-            except:
+            except (httpx.RequestError, ConnectionError):
                 time.sleep(0.1)
         raise TimeoutError(f"Server didn't start in {timeout} seconds")
 
@@ -108,6 +108,10 @@ def test_app():
     def request_body_post_handler(request_body):
         return {"response": f"Request body received: {request_body}"}
 
+    @app.add_endpoint("/large-body", "POST")
+    def large_request_body_post_handler(request_body):
+        return {"response": f"{request_body}"}
+
     @app.add_endpoint("/body", "PUT")
     def request_body_put_handler(request_body):
         return {"response": f"Request body received: {request_body}"}
@@ -167,7 +171,7 @@ def test_app():
 @pytest.fixture
 def running_server(test_app):
     """Fixture that provides a running server"""
-    server = ServerManager(test_app, 8000)
+    server = ServerManager(test_app)
     server.start()
     yield server
     server.stop()
@@ -370,7 +374,7 @@ class TestSecurAPIIntegrationRequestBody:
         )
         assert response.status_code == 400
         data = response.json()
-        assert data == {"error": "Missing required parameters"}
+        assert data == {"error": "Missing required parameters: {'required_qparam'}"}
 
         response = httpx.post(
             f"{running_server.base_url}/body/params/",
@@ -407,7 +411,7 @@ class TestSecurAPIIntegrationRequestBody:
         )
         assert response.status_code == 400
         data = response.json()
-        assert data == {"error": "Missing required parameters"}
+        assert data == {"error": "Missing required parameters: {'required_qparam'}"}
    
         response = httpx.put(
             f"{running_server.base_url}/body/params/",
@@ -452,6 +456,57 @@ class TestSecurAPIIntegrationRequestBody:
         data = response.json()
         assert data == {"error": "Missing required request body"}
 
+
+class TestSecurAPIIntegrationBodySizeLimit:
+    """Integration tests for request body size limit"""
+
+    def test_small_body_accepted(self, running_server):
+        """Test that small request bodies are accepted"""
+        small_body = "x" * 1000  # 1KB
+        response = httpx.post(
+            f"{running_server.base_url}/large-body/",
+            content=small_body,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["response"].encode()) <= 1024
+        assert "xxxxxxxxxxxxxxxxxxx" in data["response"]
+
+    def test_body_at_limit_accepted(self, running_server):
+        """Test that body exactly at 1MB limit is accepted"""
+        body_at_limit = "x" * (1024 * 1024)  # Exactly 1MB
+        response = httpx.post(
+            f"{running_server.base_url}/large-body/",
+            content=body_at_limit,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["response"].encode()) == 1024 * 1024
+        assert "xxxxxxxxxxxxxxxxxxx" in data["response"]
+
+    def test_body_exceeds_limit_rejected(self, running_server):
+        """Test that body exceeding 1MB is rejected with 400"""
+        oversized_body = "x" * (1024 * 1024 + 1)  # 1MB + 1 byte
+        response = httpx.post(
+            f"{running_server.base_url}/large-body/",
+            content=oversized_body,
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
+        assert "too large" in data["error"].lower()
+
+    def test_large_body_with_chunks(self, running_server):
+        """Test sending large body in multiple chunks"""
+        # httpx should chunk this automatically
+        large_body = "y" * (2 * 1024 * 1024)  # 2MB
+        response = httpx.post(
+            f"{running_server.base_url}/large-body/",
+            content=large_body,
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
 
 class TestSecurAPIIntegrationContentLengthEncoding:
     """Integration tests for content with multi-byte UTF-8 characters"""
@@ -524,7 +579,7 @@ def test_app_with_extra_config():
 @pytest.fixture
 def running_server_extra_config(test_app_with_extra_config):
     """Fixture that provides a running server"""
-    server = ServerManager(test_app_with_extra_config, 8000)
+    server = ServerManager(test_app_with_extra_config)
     server.start()
     yield server
     server.stop()

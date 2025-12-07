@@ -45,22 +45,18 @@ class Endpoint:
     def update_params(self, q_params: str):
         if not q_params:
             if self.required_params:
-                return "Missing required parameters"
+                raise ValueError(f"Missing required parameters: {self.required_params}")
             return self.params
+        pairs = parse_qsl(q_params, keep_blank_values=True)
+        new_params = self.params.copy()
+        remaining_required = set(self.required_params)
         
-        try:
-            pairs = parse_qsl(q_params, keep_blank_values=True)
-            new_params = self.params.copy()
-            remaining_required = set(self.required_params)
-            
-            for key, value in pairs:
-                if key not in new_params:
-                    raise KeyError(f"{key} is not a valid parameter")
-                new_params[key] = value
-                remaining_required.discard(key)
-            
-            if remaining_required:
-                return "Missing required parameters"
-            return new_params
-        except (KeyError, ValueError) as e:
-            return str(e)
+        for key, value in pairs:
+            if key not in new_params:
+                raise KeyError(f"{key} is not a valid parameter")
+            new_params[key] = value
+            remaining_required.discard(key)
+        
+        if remaining_required:
+            raise ValueError(f"Missing required parameters: {remaining_required}")
+        return new_params
