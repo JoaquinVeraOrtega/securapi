@@ -4,7 +4,7 @@ from .endpoints import Endpoint
 import json
 from http import HTTPStatus
 import logging
-from .security.rateLimitting import RateLimiterMiddleware, RateLimitException
+from .security.rateLimiting import RateLimiterMiddleware, RateLimitException
 
 class SecurAPI:
 
