@@ -4,11 +4,11 @@ from .endpoints import Endpoint
 import json
 from http import HTTPStatus
 import logging
-
+from .security.rateLimitting import RateLimiterMiddleware, RateLimitException
 
 class SecurAPI:
 
-    def __init__(self, allowed_methods=None) -> None:
+    def __init__(self, allowed_methods=None, rate_limiter=None) -> None:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         if not self.logger.handlers:
@@ -29,6 +29,10 @@ class SecurAPI:
             self.allowed_methods = {"GET", "POST", "PUT", "DELETE"}
         self.routes = {m: {} for m in self.allowed_methods}
         self.logger.info("SecurAPI initialized")
+        if rate_limiter is not None and isinstance(rate_limiter, RateLimiterMiddleware):
+            self.rate_limiter = rate_limiter
+        else:
+            self.rate_limiter = None
 
     def __call__(self, scope):
         """ASGI interface - returns a coroutine that takes (receive, send)"""
@@ -43,6 +47,10 @@ class SecurAPI:
 
     async def request_manager(self, scope, receive, send):
         try:
+            if self.rate_limiter is not None and scope["type"] == "http":
+                
+                if not self.rate_limiter.new_request_allowed(scope["client"][0]):
+                    raise RateLimitException("Rate limit exceeded")
             if scope["type"] not in ["http", "lifespan"]:
                 raise ValueError(
                     f"Expected HTTP scope, got {scope['type']}."
@@ -82,7 +90,24 @@ class SecurAPI:
                 )
             else:
                 await self.router(method, path, q_params, receive, send)
-
+        except RateLimitException as e:
+            self.logger.warning(e)
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 429,  # Too many requests
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", b"26"),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b"ERROR: Rate limit exceeded",
+                }
+            )
         except ValueError as e:
             self.logger.exception(e)
             await send(
@@ -101,6 +126,8 @@ class SecurAPI:
                     "body": b"ERROR: only http requests accepted",
                 }
             )
+
+            
 
     async def router(self, method, path, q_params, receive, send):
         default_status = {
