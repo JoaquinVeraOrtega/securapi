@@ -28,13 +28,13 @@ def put():
 def delete():
     return {"response":"Hola, delete!"}
 ```
-#### Para aceptar query params en tus endpoints, simplemente agregale parametros a la funcion:
+#### Para aceptar query params en tus endpoints, simplemente agregale parámetro a la función:
 ```python
 @app.add_endpoint("/hola")
 def get(query_param):
     return {"response":f"Hola, {query_param}!"}
 ```
-#### Para hacer opcional un parametro, simplemente agrega un default:
+#### Para hacer opcional un parámetro, simplemente agrega un default:
 ```python
 @app.add_endpoint("/hola")
 def get(optional_query_param=""):
@@ -46,7 +46,7 @@ def get(optional_query_param=""):
 def get(required_param, optional_query_param=""):
     return {"response":f"Hola, {required_param} {optional_query_param}!"}
 ```
-#### Para leer el body de una request post/put, simplemente agrega en la funcion el parametro 'request_body' (agregale un default si queres permitir body vacío):
+#### Para leer el body de una request post/put, simplemente agrega en la función el parámetro 'request_body' (agregale un default si queres permitir body vacío):
 ```python
 @app.add_endpoint("/hola/body", "POST)
 def get(request_body):
@@ -59,7 +59,7 @@ def get(required_param, optional_query_param=""):
     return 200, {"response":f"Hola, {required_param} {optional_query_param}!"}
 ```
 #### Por defecto los metodos aceptados son GET, POST, PUT, DELETE
-#### Se puede personalizar pasando como parametro los metodos que quiero permitir al instanciar la app:
+#### Se puede personalizar pasando como parámetro los metodos que quiero permitir al instanciar la app:
 ```python
 from securapi.main import SecurAPI
 
@@ -75,7 +75,27 @@ def delete(required_param, optional_query_param=""):
 def options(required_param, optional_query_param=""):
     return {"response":f"Hola, {required_param} {optional_query_param}!"}
 ```
-
-
 ### Corre el server!
-##### $uvicorn myapp:app --reload
+```bash
+$uvicorn myapp:app --reload
+```
+
+## Rate Limit:
+### Disclaimer: hacer rate limiting a nivel de aplicación no es una solucion que proteja tu api de ataques de denegación de servicio (DoS/DDoS) ya que las requests entran al servidor y consumen recursos. Para entornos de produccion deben utilizarse soluciones como CLoudfare, AWS WAF, Nginx, etc, de modo que las requests maliciosas son rechazadas por un proxy/firewall antes de llegar al servidor.
+
+### Implementación de rate-limit a nivel de aplicación:
+#### Pasa una instancia del RateLimitMiddleware como parámetro al inicializar SecurAPI:
+```python
+from securapi.main import SecurAPI
+from securapi.security.rateLimiting import RateLimiterMiddleware
+
+rate_limiter = RateLimiterMiddleware(max_requests=60, time_window=60)
+app = SecurAPI(rate_limiter=rate_limiter)
+
+@app.add_endpoint("/")
+def root():
+    return {"response": "Welcome to SecurAPI"}
+
+```
+#### En este ejemplo, la aplicación va bloquear una IP que realice más de 60 requests en 60 segundos. 
+#### Para ser desbloqueada, la IP debera esperar 60 segundos sin realizar requests.
