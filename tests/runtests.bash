@@ -7,4 +7,6 @@ pytest test_unit.py
 pytest test_integration.py
 pytest test_rate_limit_integration.py
 pytest test_rate_limit_unit.py
+pytest test_auth_unit.py
+pytest test_auth_integration.py
 fi
