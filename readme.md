@@ -99,3 +99,22 @@ def root():
 ```
 #### En este ejemplo, la aplicación va bloquear una IP que realice más de 60 requests en 60 segundos. 
 #### Para ser desbloqueada, la IP debera esperar 60 segundos sin realizar requests.
+
+## Protected endpoints:
+### Para proteger endpoints con autenticación, agregar un auth_middleware que reciba un token y devuelva true si esta autorizado:
+```python
+from securapi.main import SecurAPI
+
+app = SecurAPI()
+
+def auth_middleware_example(token):
+    if token == "super-secret-token":
+        return True
+    return False
+
+@app.add_endpoint("/protected", auth_middleware=auth_middleware_example)
+def protected():
+    return {"response": "Welcome to the protected route"}
+
+```
+#### Securapi va a capturar el auth token en los headers de la request entrante y va a llamar al auth_middleware para validarlo y decidir si dejar pasar la solicitud al endpoint.
