@@ -6,6 +6,7 @@ from http import HTTPStatus
 import logging
 from .security.rateLimiting import RateLimiterMiddleware, RateLimitException
 
+
 class SecurAPI:
 
     def __init__(self, allowed_methods=None, rate_limiter=None) -> None:
@@ -89,7 +90,8 @@ class SecurAPI:
                     }
                 )
             else:
-                await self.router(method, path, q_params, receive, send)
+                headers = scope["headers"]
+                await self.router(method, path, headers, q_params, receive, send)
         except RateLimitException as e:
             self.logger.warning(e)
             await send(
@@ -129,7 +131,7 @@ class SecurAPI:
 
             
 
-    async def router(self, method, path, q_params, receive, send):
+    async def router(self, method, path, headers, q_params, receive, send):
         default_status = {
             "GET": 200,
             "POST": 201,
@@ -143,6 +145,25 @@ class SecurAPI:
         try:
             endpoint: Endpoint = self.routes[method][path]
             args = {}
+            if endpoint.auth_middleware:
+                auth_header = None
+                for header in headers:
+                    if header[0].decode().lower() == "authorization":
+                        auth_header = header[1].decode()
+                        break
+                if auth_header is None or not auth_header.startswith("Bearer "):
+                    await self.bad_request(
+                        401, {"response": "Authentication required"}, send
+                    )
+                    return
+                token = auth_header.split(" ")[1]
+                valid_token = endpoint.auth_middleware(token)
+                if not valid_token:
+                    await self.bad_request(
+                        401, {"response": "Authentication required"}, send
+                    )
+                    return
+                
             if endpoint.request_body or endpoint.params:
                 if endpoint.params:
                     response_params = endpoint.update_params(q_params)
@@ -199,6 +220,8 @@ class SecurAPI:
             self.logger.exception(e)
             if isinstance(e, ValueError) and "Invalid HTTP status code" in str(e):
                 await self.internal_error(send)
+            elif isinstance(e, TypeError):
+                await self.internal_error(send)
             else:
                 await self.bad_request(400, {"error": str(e)}, send)
 
@@ -241,7 +264,7 @@ class SecurAPI:
         )
 
     # Endpoints decorators:
-    def add_endpoint(self, path: str, method: str = "GET") -> Callable:
+    def add_endpoint(self, path: str, method: str = "GET", auth_middleware=None) -> Callable:
         """Add endpoint (default: GET).\n
         The return must be a dict with this fields: {"status": httpstatusCode, "response": responseBody}\n
         To accept query params, add parameters to the function.\n
@@ -253,6 +276,9 @@ class SecurAPI:
                     raise ValueError(
                         f"Method {method} not allowed. Allowed methods: {self.allowed_methods}"
                     )
+                if auth_middleware is not None:
+                    if not callable(auth_middleware):
+                        raise ValueError("auth_middleware must be a callable function")
                 formated_path = path
                 argspec = inspect.getfullargspec(handler)
                 body_required = False
@@ -264,11 +290,11 @@ class SecurAPI:
                 if not path.endswith("/"):
                     formated_path = path + "/"
                 endpoint = Endpoint(
-                    handler, argspec, method, body_required, formated_path
+                    handler, argspec, method, body_required, auth_middleware, formated_path
                 )
                 self.routes[method][formated_path] = endpoint
                 return handler
-            except ValueError as e:
+            except (ValueError) as e:
                 self.logger.info(f"Error adding endpoint {handler.__name__}: {e}")
                 return handler
 

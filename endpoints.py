@@ -9,13 +9,15 @@ class Endpoint:
     required_params: List
     request_body: bool = False
     body_required: bool
+    auth_middleware: Callable | None = None
 
-    def __init__(self, handler: Callable, argspecs, method, body_required, path: str = "/") -> None:
+    def __init__(self, handler: Callable, argspecs, method, body_required, auth_middleware, path: str = "/") -> None:
         self.handler = handler
         self.method = method
         self.path = path
         self.params = {}
         self.required_params = []
+        self.auth_middleware = auth_middleware
         self.body_required = body_required
         if argspecs.args:
             self.map_params(argspecs)
